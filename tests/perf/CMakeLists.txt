@@ -51,15 +51,12 @@ macro (seastar_add_test name)
     set (libraries
       seastar
       seastar_perf_testing
-      Boost::boost
-      Boost::program_options
-      Boost::thread
-      Boost::filesystem)
+      Boost::boost)
   endif ()
 
   message(WARN "====================================== LINKING LIBRARIES FOR ${target} are ${libraries}")
   target_link_libraries (${target}
-    ${libraries})
+    PRIVATE ${libraries})
 
   target_include_directories (${target}
     PRIVATE
