@@ -593,7 +593,7 @@ target_link_libraries (seastar
     yaml-cpp::yaml-cpp
     debug Sanitizers::address
     debug Sanitizers::undefined_behavior
-    gmp)
+    ${GMP_LIBRARIES})
 
 target_compile_options (seastar
   PUBLIC -std=${Seastar_CXX_DIALECT})
