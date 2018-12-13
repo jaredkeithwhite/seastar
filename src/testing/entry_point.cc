@@ -28,7 +28,7 @@ namespace seastar {
 
 namespace testing {
 
-static bool init_unit_test_suite() {
+extern bool init_unit_test_suite() {
     const auto& tests = known_tests();
     auto&& ts = boost::unit_test::framework::master_test_suite();
     ts.p_name.set(tests.size() ? (tests)[0]->get_test_file() : "seastar-tests");
