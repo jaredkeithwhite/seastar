@@ -720,7 +720,7 @@ if (Seastar_INSTALL OR Seastar_TESTING)
   add_library (Seastar::seastar_testing ALIAS seastar_testing)
 
   target_compile_options (seastar_testing
-    INTERFACE
+    PUBLIC
       "-fpermissive")
 #    PUBLIC BOOST_TEST_DYN_LINK)
 
