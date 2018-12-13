@@ -591,7 +591,8 @@ target_link_libraries (seastar
     rt::rt
     yaml-cpp::yaml-cpp
     debug Sanitizers::address
-    debug Sanitizers::undefined_behavior)
+    debug Sanitizers::undefined_behavior
+    gmp)
 
 target_compile_options (seastar
   PUBLIC -std=${Seastar_CXX_DIALECT})
@@ -717,8 +718,8 @@ if (Seastar_INSTALL OR Seastar_TESTING)
 
   add_library (Seastar::seastar_testing ALIAS seastar_testing)
 
-  target_compile_definitions (seastar_testing
-    PUBLIC BOOST_TEST_DYN_LINK)
+#  target_compile_definitions (seastar_testing
+#    PUBLIC BOOST_TEST_DYN_LINK)
 
   target_link_libraries (seastar_testing
     PUBLIC
