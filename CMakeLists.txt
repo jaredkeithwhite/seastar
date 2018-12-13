@@ -236,6 +236,7 @@ find_package (ragel 6.10 REQUIRED)
 find_package (rt REQUIRED)
 find_package (yaml-cpp 0.5.3 REQUIRED)
 find_package (Protobuf 3.3.0 REQUIRED)
+find_package (GMP 6.1.2 REQUIRED)
 
 if ($Protobuf_PROTOC_EXECUTABLE EQUAL "")
   get_cmake_property(_variableNames VARIABLES)
