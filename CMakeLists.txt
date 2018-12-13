@@ -721,7 +721,7 @@ if (Seastar_INSTALL OR Seastar_TESTING)
 
 
   target_compile_definitions (seastar_testing
-          PUBLIC BOOST_TEST_DYN_LINK)
+          PUBLIC "-DBOOST_TEST_DYN_LINK")
 
   target_link_libraries (seastar_testing
           PUBLIC
