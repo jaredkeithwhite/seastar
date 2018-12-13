@@ -227,10 +227,10 @@ seastar_add_test (program_options
 seastar_add_test (queue
   SOURCES queue_test.cc)
 
-seastar_add_test (rpc
-  SOURCES
-    loopback_socket.hh
-    rpc_test.cc)
+#seastar_add_test (rpc
+#  SOURCES
+#    loopback_socket.hh
+#    rpc_test.cc)
 
 seastar_add_test (semaphore
   SOURCES semaphore_test.cc)
