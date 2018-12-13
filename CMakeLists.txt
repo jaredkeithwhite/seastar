@@ -721,8 +721,8 @@ if (Seastar_INSTALL OR Seastar_TESTING)
 
   target_compile_options (seastar_testing
     PUBLIC
-      "-fpermissive")
-#    PUBLIC BOOST_TEST_DYN_LINK)
+      "-fpermissive" BOOST_TEST_DYN_LINK)
+#    PUBLIC )
 
   target_link_libraries (seastar_testing
     PUBLIC
