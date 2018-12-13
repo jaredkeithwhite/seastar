@@ -719,8 +719,14 @@ if (Seastar_INSTALL OR Seastar_TESTING)
 
   add_library (Seastar::seastar_testing ALIAS seastar_testing)
 
+
   target_compile_definitions (seastar_testing
           PUBLIC BOOST_TEST_DYN_LINK)
+
+  target_link_libraries (seastar_testing
+          PUBLIC
+          Boost::unit_test_framework
+          seastar)
 
   target_compile_options (seastar_testing
     PUBLIC
@@ -730,9 +736,6 @@ if (Seastar_INSTALL OR Seastar_TESTING)
   target_link_libraries (seastar_testing
     PUBLIC
       Boost::unit_test_framework
-      Boost::boost
-      Boost::program_options
-      Boost::thread
       seastar)
 endif ()
 
