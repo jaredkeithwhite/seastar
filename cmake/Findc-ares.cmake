@@ -20,7 +20,7 @@
 # Copyright (C) 2018 Scylladb, Ltd.
 #
 
-message(WARN "c-ares prefix ${CMAKE_PREFIX_PATH}")
+message(WARN "c-ares prefix ${CMAKE_PREFIX_PATH} / ${CMAKE_MODULE_PATH}")
 
 find_path (c-ares_INCLUDE_DIR
   NAMES ares_dns.h)
