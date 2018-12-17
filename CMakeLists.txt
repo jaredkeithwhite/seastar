@@ -722,8 +722,8 @@ if (Seastar_INSTALL OR Seastar_TESTING)
   add_library (Seastar::seastar_testing ALIAS seastar_testing)
 
 
-#  target_compile_definitions (seastar_testing
-#          PUBLIC "-DBOOST_TEST_DYN_LINK")
+  target_compile_definitions (seastar_testing
+          PUBLIC "-DBOOST_TEST_DYN_LINK")
 
   target_link_libraries (seastar_testing
           PUBLIC
