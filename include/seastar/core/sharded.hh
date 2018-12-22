@@ -487,7 +487,7 @@ sharded<Service>::start_single(Args&&... args) {
 template <typename Service>
 template <typename Range, typename... Args>
 future<>
-sharded<Service>::start_on(Range&& range, Args&&... args) {
+sharded<Service>::start_on(const Range&& range, Args&&... args) {
     _instances.resize(smp::count);
     return parallel_for_each(range,
         [this, args = std::make_tuple(std::forward<Args>(args)...)] (unsigned c) mutable {
