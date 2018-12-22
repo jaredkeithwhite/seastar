@@ -63,7 +63,61 @@ void set_routes(routes& r) {
     });
 }
 
-int main(int ac, char** av) {
+
+seastar::future<> handle_connection(seastar::connected_socket s, seastar::socket_address a) {
+    auto out = s.output();
+    auto in = s.input();
+    return do_with(std::move(s), std::move(out), std::move(in),
+                   [] (auto& s, auto& out, auto& in) {
+                       return seastar::repeat([&out, &in] {
+                           return in.read().then([&out] (auto buf) {
+                               if (buf) {
+                                   return out.write(std::move(buf)).then([&out] {
+                                       return out.flush();
+                                   }).then([] {
+                                       return seastar::stop_iteration::no;
+                                   });
+                               } else {
+                                   return seastar::make_ready_future<seastar::stop_iteration>(
+                                           seastar::stop_iteration::yes);
+                               }
+                           });
+                       }).then([&out] {
+                           return out.close();
+                       });
+                   });
+}
+
+
+seastar::future<> service_loop() {
+    seastar::listen_options lo;
+    lo.reuse_address = true;
+    return seastar::do_with(seastar::listen(seastar::make_ipv4_address({1234}), lo),
+                            [] (auto& listener) {
+                                return seastar::keep_doing([&listener] () {
+                                    return listener.accept().then(
+                                            [] (seastar::connected_socket s, seastar::socket_address a) {
+                                                // Note we ignore, not return, the future returned by
+                                                // handle_connection(), so we do not wait for one
+                                                // connection to be handled before accepting the next one.
+                                                handle_connection(std::move(s), std::move(a));
+                                            });
+                                });
+                            });
+}
+
+int main(int argc, char** argv) {
+    app_template app;
+    app.add_options()("port", bpo::value<uint16_t>()->default_value(10000), "Echo Server port");
+    return app.run_deprecated(argc, argv, [&] {
+        auto&& config = app.configuration();
+        uint16_t port = config["port"].as<uint16_t>();
+        return service_loop();
+    });
+}
+
+
+int main2(int ac, char** av) {
     app_template app;
     app.add_options()("port", bpo::value<uint16_t>()->default_value(10000),
             "HTTP Server port");

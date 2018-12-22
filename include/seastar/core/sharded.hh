@@ -159,6 +159,16 @@ public:
     template <typename... Args>
     future<> start_single(Args&&... args);
 
+    /// Starts \c Service by constructing an instance on logical cores
+    /// specified by the provided Range, with a copy of \c args passed
+    /// to the constructor.
+    ///
+    /// \param args Arguments to be forwarded to \c Service constructor
+    /// \return a \ref future<> that becomes ready when the instance has been
+    ///         constructed.
+    template <typename Range, typename... Args>
+    future<> start_on(Range&& range, Args&&... args);
+
     /// Stops all started instances and destroys them.
     ///
     /// For every started instance, its \c stop() method is called, and then
@@ -472,6 +482,33 @@ sharded<Service>::start_single(Args&&... args) {
     });
 }
 
+
+
+template <typename Service>
+template <typename Range, typename... Args>
+future<>
+sharded<Service>::start_on(Range&& range, Args&&... args) {
+    _instances.resize(smp::count);
+    return parallel_for_each(range,
+        [this, args = std::make_tuple(std::forward<Args>(args)...)] (unsigned c) mutable {
+            return smp::submit_to(c, [this, args] () mutable {
+                _instances[engine().cpu_id()].service = apply([this] (Args... args) {
+                    return create_local_service(internal::unwrap_sharded_arg(std::forward<Args>(args))...);
+                }, args);
+            });
+        }).then_wrapped([this] (future<> f) {
+            try {
+                f.get();
+                return make_ready_future<>();
+            } catch (...) {
+                return this->stop().then([e = std::current_exception()] () mutable {
+                std::rethrow_exception(e);
+            });
+        }
+    });
+}
+
+
 template <typename Service>
 future<>
 sharded<Service>::stop() {
@@ -497,7 +534,11 @@ future<>
 sharded<Service>::invoke_on_all(std::function<future<> (Service&)> func) {
     return internal::sharded_parallel_for_each(_instances.size(), [this, func = std::move(func)] (unsigned c) {
         return smp::submit_to(c, [this, func] {
-            return func(*get_local_service());
+            auto inst = _instances[engine().cpu_id()].service;
+            if (!inst) {
+                return make_ready_future<>();
+            }
+            return func(*inst);
         });
     });
 }
