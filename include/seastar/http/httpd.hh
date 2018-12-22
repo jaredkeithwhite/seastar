@@ -348,6 +348,10 @@ public:
     http_server_control() : _server_dist(new distributed<http_server>) {
     }
 
+    template <typename Range>
+    future<> start(const Range&& range, const sstring& name = generate_server_name()) {
+        return _server_dist->start(range, name);
+    }
 
     future<> start(const sstring& name = generate_server_name()) {
         return _server_dist->start(name);

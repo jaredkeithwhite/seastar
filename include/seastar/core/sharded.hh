@@ -167,7 +167,7 @@ public:
     /// \return a \ref future<> that becomes ready when the instance has been
     ///         constructed.
     template <typename Range, typename... Args>
-    future<> start_on(Range&& range, Args&&... args);
+    future<> start_on(const Range&& range, Args&&... args);
 
     /// Stops all started instances and destroys them.
     ///
