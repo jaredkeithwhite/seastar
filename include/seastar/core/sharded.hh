@@ -167,7 +167,7 @@ public:
     /// \return a \ref future<> that becomes ready when the instance has been
     ///         constructed.
     template <typename Range, typename... Args>
-    future<> start_on(const Range&& range, Args&&... args);
+    future<> start_on(const Range& range, Args&&... args);
 
     /// Stops all started instances and destroys them.
     ///
@@ -487,7 +487,7 @@ sharded<Service>::start_single(Args&&... args) {
 template <typename Service>
 template <typename Range, typename... Args>
 future<>
-sharded<Service>::start_on(const Range&& range, Args&&... args) {
+sharded<Service>::start_on(const Range& range, Args&&... args) {
     _instances.resize(smp::count);
     return parallel_for_each(range,
         [this, args = std::make_tuple(std::forward<Args>(args)...)] (unsigned c) mutable {
