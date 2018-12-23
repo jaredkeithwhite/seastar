@@ -350,7 +350,7 @@ public:
 
     template <typename Range>
     future<> start(const Range& range, const sstring& name = generate_server_name()) {
-        return _server_dist->start(range, name);
+        return _server_dist->start_on(range, name);
     }
 
     future<> start(const sstring& name = generate_server_name()) {
