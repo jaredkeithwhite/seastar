@@ -227,7 +227,7 @@ find_package (LinuxMembarrier)
 find_package (Protobuf 2.5.0 REQUIRED)
 find_package (Sanitizers REQUIRED)
 find_package (StdFilesystem REQUIRED)
-find_package (hwloc 1.11.2)
+find_package (hwloc 1.11.10)
 # No version information published.
 find_package (lksctp-tools REQUIRED)
 # No version information published.
