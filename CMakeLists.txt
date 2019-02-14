@@ -577,7 +577,7 @@ target_link_libraries (seastar
   PRIVATE
     ${CMAKE_DL_LIBS}
     Boost::filesystem
-    gnutls::gnutls
+    GnuTLS::GnuTLS
     StdFilesystem::filesystem
     lksctp-tools::lksctp-tools
     protobuf::protobuf
