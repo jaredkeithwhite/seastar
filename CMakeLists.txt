@@ -577,10 +577,10 @@ target_link_libraries (seastar
   PRIVATE
     ${CMAKE_DL_LIBS}
     Boost::filesystem
-    GnuTLS::gnutls
+    gnutls::gnutls
     StdFilesystem::filesystem
     lksctp-tools::lksctp-tools
-    protobuf::libprotobuf
+    protobuf::protobuf
     rt::rt
     yaml-cpp::yaml-cpp
     debug Sanitizers::address
