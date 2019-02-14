@@ -226,7 +226,7 @@ find_package (lz4 1.7.3 REQUIRED)
 find_package (Concepts)
 find_package (GnuTLS 3.3.26 REQUIRED)
 find_package (LinuxMembarrier)
-find_package (Protobuf 2.5.0 REQUIRED)
+find_package (protobuf 2.5.0 REQUIRED)
 find_package (Sanitizers REQUIRED)
 find_package (StdFilesystem REQUIRED)
 find_package (hwloc 1.11.10)
@@ -580,7 +580,7 @@ target_link_libraries (seastar
     GnuTLS::GnuTLS
     StdFilesystem::filesystem
     lksctp-tools::lksctp-tools
-    Protobuf::libprotobuf
+    protobuf::libprotobuf
     rt::rt
     yaml-cpp::yaml-cpp
     debug Sanitizers::address
