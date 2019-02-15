@@ -580,7 +580,7 @@ target_link_libraries (seastar
     GnuTLS::GnuTLS
     StdFilesystem::filesystem
     lksctp-tools::lksctp-tools
-    protobuf::libprotobuf
+    protobuf::protobuf
     rt::rt
     yaml-cpp::yaml-cpp
     debug Sanitizers::address
