@@ -20,11 +20,12 @@
 # Copyright (C) 2018 Scylladb, Ltd.
 #
 
-cmake_minimum_required (VERSION 3.5)
+cmake_minimum_required (VERSION 3.12)
 
 list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 message(WARN "=================== ${CMAKE_MODULE_PATH}")
+message(WARN "=================== ${PATH}")
 include (Cooking OPTIONAL)
 
 project (Seastar
@@ -205,7 +206,7 @@ set (Seastar_GEN_BINARY_DIR ${Seastar_BINARY_DIR}/gen)
 ## Public dependencies.
 ##
 
-find_package (Boost 1.64.0 REQUIRED
+find_package (boost 1.64.0 REQUIRED
   COMPONENTS
     filesystem
     program_options
@@ -234,7 +235,7 @@ find_package (hwloc 1.11.10)
 find_package (lksctp-tools REQUIRED)
 # No version information published.
 find_package (numactl)
-find_package (ragel 6.10 REQUIRED)
+find_package (ragel_installer 6.10 REQUIRED)
 find_package (rt REQUIRED)
 find_package (yaml-cpp 0.5.1 REQUIRED)
 
