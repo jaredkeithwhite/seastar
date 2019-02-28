@@ -31,6 +31,12 @@
 #include <boost/variant.hpp>
 #endif
 
+#if __cplusplus >= 201703L && __has_include(<filesystem>)
+#include <filesystem>
+#else
+#include <experimental/filesystem>
+#endif
+
 namespace seastar {
 
 /// \cond internal
@@ -167,6 +173,14 @@ const U* get_if(const variant<Types...>* v) {
     return boost::get<U, Types...>(v);
 }
 
+#endif
+
+#if defined(__cpp_lib_filesystem)
+namespace filesystem = std::filesystem;
+#elif defined(__cpp_lib_experimental_filesystem)
+namespace filesystem = std::experimental::filesystem;
+#else
+#error No filesystem header detected.
 #endif
 
 using string_view = basic_string_view<char>;

@@ -28,7 +28,7 @@ add_custom_command (
     ${CMAKE_CURRENT_SOURCE_DIR}/consumer/Makefile
     ${CMAKE_CURRENT_SOURCE_DIR}/consumer/cmake_consumer.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/consumer/pkgconfig_consumer.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/consumer/recipe/test_dist.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/consumer/cooking_recipe.cmake
   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/consumer ${CMAKE_CURRENT_BINARY_DIR}/consumer)
 
 configure_file (
@@ -40,6 +40,7 @@ add_custom_target (test_dist_consumer_test_run
   DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/consumer
   COMMAND
     ${CMAKE_COMMAND} -E env
+    CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     CONSUMER_SOURCE_DIR=${CMAKE_CURRENT_BINARY_DIR}/consumer
     SEASTAR_SOURCE_DIR=${Seastar_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/consumer_test.sh

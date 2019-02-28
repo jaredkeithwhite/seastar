@@ -27,7 +27,9 @@
 #include <seastar/core/do_with.hh>
 #include <seastar/core/shared_future.hh>
 #include <seastar/core/thread.hh>
+#include <seastar/core/print.hh>
 #include <boost/iterator/counting_iterator.hpp>
+#include <seastar/testing/thread_test_case.hh>
 
 using namespace seastar;
 using namespace std::chrono_literals;
@@ -167,7 +169,7 @@ SEASTAR_TEST_CASE(test_failing_intermediate_promise_should_fail_the_master_futur
     promise<> p1;
     promise<> p2;
 
-    auto f = p1.get_future().then([f = std::move(p2.get_future())] () mutable {
+    auto f = p1.get_future().then([f = p2.get_future()] () mutable {
         return std::move(f);
     }).then([] {
         BOOST_REQUIRE(false);
@@ -433,12 +435,12 @@ SEASTAR_TEST_CASE(test_parallel_for_each) {
         BOOST_REQUIRE_EQUAL(sum, 15);
 
         // throws immediately
-        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [&sum] (int) -> future<> {
+        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [] (int) -> future<> {
             throw 5;
         }).get(), int, [] (int v) { return v == 5; });
 
         // throws after suspension
-        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [&sum] (int) {
+        BOOST_CHECK_EXCEPTION(parallel_for_each(range, [] (int) {
             return later().then([] {
                 throw 5;
             });
@@ -952,4 +954,37 @@ SEASTAR_TEST_CASE(test_futurize_mutable) {
         }
         return seastar::stop_iteration::no;
     });
+}
+
+SEASTAR_THREAD_TEST_CASE(test_broken_promises) {
+    compat::optional<future<>> f;
+    compat::optional<future<>> f2;
+    { // Broken after attaching a continuation
+        auto p = promise<>();
+        f = p.get_future();
+        f2 = f->then_wrapped([&] (future<> f3) {
+            BOOST_CHECK(f3.failed());
+            BOOST_CHECK_THROW(f3.get(), broken_promise);
+            f = { };
+        });
+    }
+    f2->get();
+    BOOST_CHECK(!f);
+
+    { // Broken before attaching a continuation
+        auto p = promise<>();
+        f = p.get_future();
+    }
+    f->then_wrapped([&] (future<> f3) {
+        BOOST_CHECK(f3.failed());
+        BOOST_CHECK_THROW(f3.get(), broken_promise);
+        f = { };
+    }).get();
+    BOOST_CHECK(!f);
+
+    { // Broken before suspending a thread
+        auto p = promise<>();
+        f = p.get_future();
+    }
+    BOOST_CHECK_THROW(f->get(), broken_promise);
 }

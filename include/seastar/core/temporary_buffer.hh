@@ -80,11 +80,21 @@ public:
         : _buffer(nullptr)
         , _size(0) {}
     temporary_buffer(const temporary_buffer&) = delete;
+
+#if defined(__GNUC__) && !defined(__clang__)
+    // At least at -O1, the inline decisions are such that the following code hits https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88897.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
     /// Moves a \c temporary_buffer.
     temporary_buffer(temporary_buffer&& x) noexcept : _buffer(x._buffer), _size(x._size), _deleter(std::move(x._deleter)) {
         x._buffer = nullptr;
         x._size = 0;
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
     /// Creates a \c temporary_buffer with a specific deleter.
     ///
     /// \param buf beginning of the buffer held by this \c temporary_buffer
@@ -197,8 +207,8 @@ public:
     /// Creates a \c temporary_buffer object with a specified size, with
     /// memory aligned to a specific boundary.
     ///
-    /// \param alignment Required alignment; must be a power of two.
-    /// \param size Required size.
+    /// \param alignment Required alignment; must be a power of two and a multiple of sizeof(void *).
+    /// \param size Required size; must be a multiple of alignment.
     /// \return a new \c temporary_buffer object.
     static temporary_buffer aligned(size_t alignment, size_t size) {
         void *ptr = nullptr;

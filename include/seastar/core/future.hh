@@ -34,6 +34,7 @@
 #include <seastar/core/function_traits.hh>
 #include <seastar/util/alloc_failure_injector.hh>
 #include <seastar/util/gcc6-concepts.hh>
+#include <seastar/util/noncopyable_function.hh>
 
 namespace seastar {
 
@@ -102,6 +103,16 @@ void engine_exit(std::exception_ptr eptr = {});
 
 void report_failed_future(std::exception_ptr ex);
 /// \endcond
+
+/// \brief Exception type for broken promises
+///
+/// When a promise is broken, i.e. a promise object with an attached
+/// continuation is destroyed before setting any value or exception, an
+/// exception of `broken_promise` type is propagated to that abandoned
+/// continuation.
+struct broken_promise : std::logic_error {
+    broken_promise() : logic_error("broken promise") { }
+};
 
 //
 // A future/promise pair maintain one logical value (a future_state).
@@ -435,7 +446,7 @@ class promise {
     future<T...>* _future = nullptr;
     future_state<T...> _local_state;
     future_state<T...>* _state;
-    std::unique_ptr<continuation_base<T...>> _task;
+    std::unique_ptr<task> _task;
     static constexpr bool copy_noexcept = future_state<T...>::copy_noexcept;
 public:
     /// \brief Constructs an empty \c promise.
@@ -518,6 +529,13 @@ public:
     void set_exception(Exception&& e) noexcept {
         set_exception(make_exception_ptr(std::forward<Exception>(e)));
     }
+
+#if SEASTAR_COROUTINES_TS
+    void set_coroutine(future_state<T...>& state, task& coroutine) noexcept {
+        _state = &state;
+        _task = std::unique_ptr<task>(&coroutine);
+    }
+#endif
 private:
     template<urgent Urgent>
     void do_set_value(std::tuple<T...> result) noexcept {
@@ -564,7 +582,7 @@ private:
     template <typename... U>
     friend class future;
 
-    friend class future_state<T...>;
+    friend struct future_state<T...>;
 };
 
 /// \brief Specialization of \c promise<void>
@@ -759,7 +777,10 @@ private:
     }
     template <typename Func>
     void schedule(Func&& func) {
-        if (state()->available()) {
+        if (state()->available() || !_promise) {
+            if (__builtin_expect(!state()->available() && !_promise, false)) {
+                abandoned();
+            }
             ::seastar::schedule(std::make_unique<continuation<Func, T...>>(std::move(func), std::move(*state())));
         } else {
             assert(_promise);
@@ -798,6 +819,18 @@ private:
                 std::throw_with_nested(f_ex);
             }
             __builtin_unreachable();
+        }
+    }
+
+    // Used when there is to attempt to attach a continuation or a thread to a future
+    // that was abandoned by its promise.
+    [[gnu::cold]] [[gnu::noinline]]
+    void abandoned() noexcept {
+        try {
+            // Constructing broken_promise may throw (std::logic_error ctor is not noexcept).
+            _local_state.set_exception(std::make_exception_ptr(broken_promise{}));
+        } catch (...) {
+            _local_state.set_exception(std::current_exception());
         }
     }
 
@@ -899,6 +932,10 @@ private:
         }
     };
     void do_wait() noexcept {
+        if (__builtin_expect(!_promise, false)) {
+            abandoned();
+            return;
+        }
         auto thread = thread_impl::get();
         assert(thread);
         thread_wake_task wake_task{thread, this};
@@ -944,6 +981,21 @@ public:
     GCC6_CONCEPT( requires ::seastar::CanApply<Func, T...> )
     Result
     then(Func&& func) noexcept {
+#ifndef SEASTAR_TYPE_ERASE_MORE
+        return then_impl(std::move(func));
+#else
+        using futurator = futurize<std::result_of_t<Func(T&&...)>>;
+        return then_impl(noncopyable_function<Result (T&&...)>([func = std::forward<Func>(func)] (T&&... args) mutable {
+            return futurator::apply(func, std::forward_as_tuple(std::move(args)...));
+        }));
+#endif
+    }
+
+private:
+
+    template <typename Func, typename Result = futurize_t<std::result_of_t<Func(T&&...)>>>
+    Result
+    then_impl(Func&& func) noexcept {
         using futurator = futurize<std::result_of_t<Func(T&&...)>>;
         if (available() && !need_preempt()) {
             if (failed()) {
@@ -972,7 +1024,7 @@ public:
         return fut;
     }
 
-
+public:
     /// \brief Schedule a block of code to run when the future is ready, allowing
     ///        for exception handling.
     ///
@@ -992,6 +1044,21 @@ public:
     GCC6_CONCEPT( requires ::seastar::CanApply<Func, future> )
     Result
     then_wrapped(Func&& func) noexcept {
+#ifndef SEASTAR_TYPE_ERASE_MORE
+        return then_wrapped_impl(std::move(func));
+#else
+        using futurator = futurize<std::result_of_t<Func(future)>>;
+        return then_wrapped_impl(noncopyable_function<Result (future)>([func = std::forward<Func>(func)] (future f) mutable {
+            return futurator::apply(std::forward<Func>(func), std::move(f));
+        }));
+#endif
+    }
+
+private:
+
+    template <typename Func, typename Result = futurize_t<std::result_of_t<Func(future)>>>
+    Result
+    then_wrapped_impl(Func&& func) noexcept {
         using futurator = futurize<std::result_of_t<Func(future)>>;
         if (available() && !need_preempt()) {
             return futurator::apply(std::forward<Func>(func), future(get_available_state()));
@@ -1012,6 +1079,7 @@ public:
         return fut;
     }
 
+public:
     /// \brief Satisfy some \ref promise object with this future as a result.
     ///
     /// Arranges so that when this future is resolve, it will be used to
@@ -1188,6 +1256,15 @@ public:
         state()->ignore();
     }
 
+#if SEASTAR_COROUTINES_TS
+    void set_coroutine(task& coroutine) noexcept {
+        assert(!state()->available());
+        assert(_promise);
+        _promise->set_coroutine(_local_state, coroutine);
+        _promise->_future = nullptr;
+        _promise = nullptr;
+    }
+#endif
 private:
     void set_callback(std::unique_ptr<continuation_base<T...>> callback) {
         if (state()->available()) {
@@ -1268,6 +1345,18 @@ void promise<T...>::abandoned() noexcept {
         _future->_promise = nullptr;
     } else if (_state && _state->failed()) {
         report_failed_future(_state->get_exception());
+    } else if (__builtin_expect(bool(_task), false)) {
+        assert(_state && !_state->available());
+        // Encourage the compiler to move this away from the hot paths. __builtin_expect is not enough
+        // to do that. Cold lambdas work (at least for GCC8+).
+        [&] () __attribute__((cold)) {
+            try {
+                // Constructing broken_promise may throw (std::logic_error ctor is not noexcept).
+                set_exception(broken_promise{});
+            } catch (...) {
+                set_exception(std::current_exception());
+            }
+        }();
     }
 }
 

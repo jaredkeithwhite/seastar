@@ -55,10 +55,24 @@
 #include <seastar/core/cacheline.hh>
 #include <seastar/core/memory.hh>
 #include <seastar/core/reactor.hh>
+#include <seastar/core/print.hh>
 #include <seastar/util/alloc_failure_injector.hh>
 #include <iostream>
 
 namespace seastar {
+
+void* internal::allocate_aligned_buffer_impl(size_t size, size_t align) {
+    void *ret;
+    auto r = posix_memalign(&ret, align, size);
+    if (r == ENOMEM) {
+        throw std::bad_alloc();
+    } else if (r == EINVAL) {
+        throw std::runtime_error(format("Invalid alignment of {:d}; allocating {:d} bytes", align, size));
+    } else {
+        assert(r == 0);
+        return ret;
+    }
+}
 
 namespace memory {
 
@@ -1225,7 +1239,7 @@ static inline cpu_pages& get_cpu_mem()
     if (__builtin_expect(!bool(cpu_mem_ptr), false)) {
         // Mark as cold so that GCC8+ can move this part of the function
         // to .text.unlikely.
-        [&] () [[gnu::cold]] {
+        [&] () __attribute__((cold)) {
             cpu_mem_ptr = &cpu_mem;
         }();
     }
@@ -1482,7 +1496,7 @@ using namespace seastar::memory;
 
 extern "C"
 [[gnu::visibility("default")]]
-[[gnu::externally_visible]]
+[[gnu::used]]
 void* malloc(size_t n) throw () {
     if (try_trigger_error_injector()) {
         return nullptr;
@@ -1497,7 +1511,7 @@ void* __libc_malloc(size_t n) throw ();
 
 extern "C"
 [[gnu::visibility("default")]]
-[[gnu::externally_visible]]
+[[gnu::used]]
 void free(void* ptr) {
     if (ptr) {
         seastar::memory::free(ptr);
@@ -1566,7 +1580,7 @@ void* __libc_realloc(void* obj, size_t size) throw ();
 
 extern "C"
 [[gnu::visibility("default")]]
-[[gnu::externally_visible]]
+[[gnu::used]]
 int posix_memalign(void** ptr, size_t align, size_t size) {
     if (try_trigger_error_injector()) {
         return ENOMEM;
@@ -1808,26 +1822,6 @@ void operator delete[](void* ptr, std::align_val_t a, const std::nothrow_t&) noe
 
 #endif
 
-void* operator new(size_t size, seastar::with_alignment wa) {
-    trigger_error_injector();
-    return throw_if_null(allocate_aligned(wa.alignment(), size));
-}
-
-void* operator new[](size_t size, seastar::with_alignment wa) {
-    trigger_error_injector();
-    return throw_if_null(allocate_aligned(wa.alignment(), size));
-}
-
-void operator delete(void* ptr, seastar::with_alignment wa) {
-    // only called for matching operator new, so we know ptr != nullptr
-    return seastar::memory::free(ptr);
-}
-
-void operator delete[](void* ptr, seastar::with_alignment wa) {
-    // only called for matching operator new, so we know ptr != nullptr
-    return seastar::memory::free(ptr);
-}
-
 namespace seastar {
 
 #else
@@ -1898,30 +1892,6 @@ void disable_large_allocation_warning() {
 
 }
 
-void* operator new(size_t size, seastar::with_alignment wa) {
-    void* ret;
-    if (posix_memalign(&ret, wa.alignment(), size) != 0) {
-        throw std::bad_alloc();
-    }
-    return ret;
-}
-
-void* operator new[](size_t size, seastar::with_alignment wa) {
-    void* ret;
-    if (posix_memalign(&ret, wa.alignment(), size) != 0) {
-        throw std::bad_alloc();
-    }
-    return ret;
-}
-
-void operator delete(void* ptr, seastar::with_alignment wa) {
-    return ::free(ptr);
-}
-
-void operator delete[](void* ptr, seastar::with_alignment wa) {
-    return ::free(ptr);
-}
-
 namespace seastar {
 
 #endif
@@ -1929,4 +1899,3 @@ namespace seastar {
 /// \endcond
 
 }
-

@@ -123,7 +123,7 @@ cooking_ingredient (zlib
   EXTERNAL_PROJECT_ARGS
     URL https://zlib.net/zlib-1.2.11.tar.gz
     URL_MD5 1c9f62f0778697a09d36121ead88e08e
-    CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --64
+    CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR>
     BUILD_COMMAND <DISABLE>
     INSTALL_COMMAND ${make_command} install)
 
@@ -269,9 +269,9 @@ cooking_ingredient (dpdk
       COMMAND
         ${CMAKE_COMMAND}
         -DSeastar_DPDK_CONFIG_FILE_IN=<BINARY_DIR>/.config
-        -DSeastar_DPDK_CONFIG_FILE_CHANGES=${CMAKE_CURRENT_LIST_DIR}/dpdk_config
+        -DSeastar_DPDK_CONFIG_FILE_CHANGES=${CMAKE_CURRENT_SOURCE_DIR}/dpdk_config
         -DSeastar_DPDK_CONFIG_FILE_OUT=<BINARY_DIR>/${dpdk_quadruple}/.config
-        -P ${CMAKE_CURRENT_LIST_DIR}/dpdk_configure.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dpdk_configure.cmake
     BUILD_COMMAND <DISABLE>
     INSTALL_COMMAND
       ${CMAKE_COMMAND} -E chdir <SOURCE_DIR>
@@ -280,7 +280,7 @@ cooking_ingredient (dpdk
 cooking_ingredient (fmt
   LOCAL_REBUILD
   CMAKE_ARGS
-    -DBUILD_SHARED_LIBS=ON
+    -DBUILD_SHARED_LIBS=OFF
     -DFMT_DOC=OFF
     -DFMT_LIB_DIR=lib
     -DFMT_TEST=OFF

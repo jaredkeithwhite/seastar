@@ -28,6 +28,7 @@
 #include <seastar/core/sharded.hh>
 #include <seastar/core/gate.hh>
 #include <seastar/net/tls.hh>
+#include <iostream>
 
 using namespace seastar;
 
@@ -90,7 +91,7 @@ public:
                             });
                         }).then([strms]{
                             return strms->out.close();
-                        }).handle_exception([this](auto ep) {
+                        }).handle_exception([](auto ep) {
                         }).finally([this, strms]{
                             if (_verbose) {
                                 std::cout << "Ending session" << std::endl;

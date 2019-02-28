@@ -32,6 +32,7 @@
 #include <seastar/core/timer.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/gate.hh>
+#include <seastar/core/print.hh>
 #include <seastar/util/log.hh>
 #include <seastar/util/std-compat.hh>
 
@@ -921,7 +922,7 @@ private:
     network_stack & _stack;
 
     ares_channel _channel = {};
-    uint64_t _ops = 0, _calls = 0;
+    uint64_t _calls = 0;
     std::chrono::milliseconds _timeout;
     timer<> _timer;
     gate _gate;
@@ -1035,4 +1036,3 @@ future<std::vector<net::inet_address>> net::inet_address::find_all(
 }
 
 }
-

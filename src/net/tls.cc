@@ -28,6 +28,7 @@
 #include <seastar/core/sstring.hh>
 #include <seastar/core/semaphore.hh>
 #include <seastar/core/timer.hh>
+#include <seastar/core/print.hh>
 #include <seastar/net/tls.hh>
 #include <seastar/net/stack.hh>
 #include <seastar/util/std-compat.hh>
@@ -1130,6 +1131,9 @@ public:
     }
     void abort_accept() override  {
         _sock.abort_accept();
+    }
+    socket_address local_address() const override {
+        return _sock.local_address();
     }
 private:
     shared_ptr<server_credentials> _creds;

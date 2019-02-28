@@ -22,10 +22,11 @@
 
 cmake_minimum_required (VERSION 3.12)
 
-list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+list (APPEND CMAKE_MODULE_PATH
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake
+        ${CMAKE_CURRENT_BINARY_DIR})
 
-message(WARN "=================== ${CMAKE_MODULE_PATH}")
-message(WARN "=================== ${PATH}")
+message(WARN "==========================> ${CMAKE_MODULE_PATH}")
 include (Cooking OPTIONAL)
 
 project (Seastar
@@ -34,6 +35,10 @@ project (Seastar
 
 option (Seastar_ALLOC_FAILURE_INJECTION
   "Enable failure injection into the Seastar allocator."
+  OFF)
+
+option (Seastar_EXPERIMENTAL_COROUTINES_TS
+  "Enable experimental support for Coroutines TS."
   OFF)
 
 #
@@ -84,6 +89,10 @@ set (CMAKE_BUILD_TYPE
   STRING
   "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Dev."
   FORCE)
+
+if (NOT CMAKE_BUILD_TYPE)
+  set (CMAKE_BUILD_TYPE "Release")
+endif ()
 
 set (Seastar_ALLOC_PAGE_SIZE
   ""
@@ -175,6 +184,14 @@ option (Seastar_TESTING
   "Enable testing targets."
   ON)
 
+option (Seastar_COMPRESS_DEBUG
+  "Compress debug info."
+  ON)
+
+option (Seastar_SPLIT_DWARF
+  "Use split dwarf."
+  OFF)
+
 set (Seastar_TEST_TIMEOUT
   "300"
   CACHE
@@ -217,7 +234,7 @@ find_package (c-ares 1.13.0 REQUIRED MODULE)
 find_package (cryptopp 5.6.5 REQUIRED)
 # No version information published.
 find_package (dpdk)
-find_package (fmt 4.0.0 REQUIRED)
+find_package (fmt 5.0.0 REQUIRED)
 find_package (lz4 1.7.3 REQUIRED)
 
 ##
@@ -229,6 +246,7 @@ find_package (GnuTLS 3.3.26 REQUIRED)
 find_package (LinuxMembarrier)
 find_package (protobuf 3.6.1 REQUIRED)
 find_package (Sanitizers REQUIRED)
+find_package (StdAtomic REQUIRED)
 find_package (StdFilesystem REQUIRED)
 find_package (hwloc 1.11.10)
 # No version information published.
@@ -236,6 +254,7 @@ find_package (lksctp-tools REQUIRED)
 # No version information published.
 find_package (numactl)
 find_package (ragel_installer 6.10 REQUIRED)
+find_package (ragel 6.10 REQUIRED)
 find_package (rt REQUIRED)
 find_package (yaml-cpp 0.5.1 REQUIRED)
 
@@ -566,26 +585,43 @@ target_include_directories (seastar
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${Seastar_GEN_BINARY_DIR}/src)
 
+set (Seastar_PRIVATE_CXX_FLAGS
+  -fvisibility=hidden
+  -UNDEBUG
+  -Wall
+  -Werror
+  -Wno-error=deprecated-declarations)
+
+if (Seastar_COMPRESS_DEBUG)
+  # -gz doesn't imply -g, so it is safe to add it regardless of debug
+  # info being enabled.
+  list (APPEND Seastar_PRIVATE_CXX_FLAGS -gz)
+endif()
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if (NOT Sanitizers_FOUND)
+    message (FATAL_ERROR "Sanitizers are required for debug mode!")
+  endif ()
+endif ()
+
 target_link_libraries (seastar
   PUBLIC
-    Boost::boost
-    Boost::program_options
-    Boost::thread
+    debug Sanitizers::address
+    debug Sanitizers::undefined_behavior
+    boost::boost
     c-ares::c-ares
     cryptopp::cryptopp
     fmt::fmt
     lz4::lz4
   PRIVATE
     ${CMAKE_DL_LIBS}
-    Boost::filesystem
     GnuTLS::GnuTLS
+    StdAtomic::atomic
     StdFilesystem::filesystem
     lksctp-tools::lksctp-tools
     protobuf::protobuf
     rt::rt
-    yaml-cpp::yaml-cpp
-    debug Sanitizers::address
-    debug Sanitizers::undefined_behavior)
+    yaml-cpp::yaml-cpp)
 
 #
 # We want asserts enabled on all modes, but cmake defaults to passing
@@ -593,10 +629,20 @@ target_link_libraries (seastar
 # reenable it. To force asserts off pass -DNDEBUG in
 # Seastar_CXX_FLAGS.
 #
+# To disable -Werror, pass -Wno-error to Seastar_CXX_FLAGS.
+#
+# We disable _FORTIFY_SOURCE because it generates false positives with longjmp() (src/core/thread.cc)
+#
 
 target_compile_options (seastar
-  PUBLIC -std=${Seastar_CXX_DIALECT}
-  PRIVATE -UNDEBUG)
+  PUBLIC
+    -std=${Seastar_CXX_DIALECT}
+    -U_FORTIFY_SOURCE)
+
+if (Seastar_EXPERIMENTAL_COROUTINES_TS)
+  target_compile_options (seastar PUBLIC -fcoroutines-ts -g)
+  target_compile_definitions (seastar PUBLIC SEASTAR_COROUTINES_TS)
+endif ()
 
 if (Seastar_GCC6_CONCEPTS OR Concepts_FOUND)
   target_compile_definitions (seastar
@@ -607,8 +653,7 @@ if (Seastar_GCC6_CONCEPTS OR Concepts_FOUND)
 endif ()
 
 if (LinuxMembarrier_FOUND)
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_HAS_MEMBARRIER)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_HAS_MEMBARRIER)
 
   target_link_libraries (seastar
     PRIVATE LinuxMembarrier::membarrier)
@@ -625,8 +670,7 @@ if (Seastar_STD_OPTIONAL_VARIANT_STRINGVIEW)
 endif ()
 
 if (Sanitizers_FIBER_SUPPORT)
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_HAVE_ASAN_FIBER_SUPPORT)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_HAVE_ASAN_FIBER_SUPPORT)
 endif ()
 
 if (Seastar_ALLOC_PAGE_SIZE)
@@ -635,8 +679,18 @@ if (Seastar_ALLOC_PAGE_SIZE)
 endif ()
 
 if (Seastar_CXX_FLAGS)
-  target_compile_options (seastar
-    PRIVATE ${Seastar_CXX_FLAGS})
+  list (APPEND Seastar_PRIVATE_CXX_FLAGS ${Seastar_CXX_FLAGS})
+endif ()
+
+# When using split dwarf --gdb-index is effectively required since
+# otherwise gdb is just too slow. We also want to use split dwarf in
+# as many compilation units as possible.  So while these flags don't
+# have to be public, we don't expect anyone to want to build seastar
+# with them and some client code without.
+if (Seastar_SPLIT_DWARF AND (NOT (CMAKE_BUILD_TYPE STREQUAL "Dev")))
+  set (Seastar_SPLIT_DWARF_FLAG "-Wl,--gdb-index")
+  target_link_libraries (seastar PUBLIC ${Seastar_SPLIT_DWARF_FLAG})
+  target_compile_options (seastar PUBLIC "-gsplit-dwarf")
 endif ()
 
 if (Seastar_DPDK)
@@ -652,8 +706,7 @@ if (Seastar_DPDK)
 endif ()
 
 if ((CMAKE_BUILD_TYPE STREQUAL "Debug") OR (NOT Seastar_EXCEPTION_SCALABILITY_WORKAROUND))
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_NO_EXCEPTION_HACK)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_NO_EXCEPTION_HACK)
 endif ()
 
 if (Seastar_HWLOC)
@@ -661,8 +714,7 @@ if (Seastar_HWLOC)
     message (FATAL_ERROR "`hwloc` support is enabled but it is not available!")
   endif ()
 
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_HAVE_HWLOC)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_HAVE_HWLOC)
 
   target_link_libraries (seastar
     PRIVATE hwloc::hwloc)
@@ -679,27 +731,49 @@ if (Seastar_NUMA)
     message (FATAL_ERROR "NUMA support is enabled but `numactl` is not available!")
   endif ()
 
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_HAVE_NUMA)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_HAVE_NUMA)
 
   target_link_libraries (seastar
     PRIVATE numactl::numactl)
 endif ()
 
 if (lz4_HAVE_COMPRESS_DEFAULT)
-  target_compile_definitions (seastar
-    PRIVATE SEASTAR_HAVE_LZ4_COMPRESS_DEFAULT)
+  list (APPEND Seastar_PRIVATE_COMPILE_DEFINITIONS SEASTAR_HAVE_LZ4_COMPRESS_DEFAULT)
 endif ()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   target_compile_definitions (seastar
     PUBLIC
       SEASTAR_DEBUG
+      SEASTAR_DEFAULT_ALLOCATOR
       SEASTAR_DEBUG_SHARED_PTR
       SEASTAR_ASAN_ENABLED
-      SEASTAR_THREAD_STACK_GUARDS
-    PRIVATE SEASTAR_DEFAULT_ALLOCATOR)
+      SEASTAR_SHUFFLE_TASK_QUEUE
+      SEASTAR_THREAD_STACK_GUARDS)
 endif ()
+
+if ((CMAKE_BUILD_TYPE STREQUAL "Dev") OR (CMAKE_BUILD_TYPE STREQUAL "Debug"))
+  target_compile_definitions (seastar
+    PUBLIC
+      SEASTAR_TYPE_ERASE_MORE)
+endif ()
+
+target_compile_definitions (seastar
+  PRIVATE ${Seastar_PRIVATE_COMPILE_DEFINITIONS})
+
+target_compile_options (seastar
+  PRIVATE ${Seastar_PRIVATE_CXX_FLAGS})
+
+add_library (seastar_private INTERFACE)
+
+target_compile_definitions (seastar_private
+  INTERFACE ${Seastar_PRIVATE_COMPILE_DEFINITIONS})
+
+target_compile_options (seastar_private
+  INTERFACE ${Seastar_PRIVATE_CXX_FLAGS})
+
+target_link_libraries (seastar_private
+  INTERFACE seastar)
 
 #
 # The testing library.
@@ -720,11 +794,14 @@ if (Seastar_INSTALL OR Seastar_TESTING)
   add_library (Seastar::seastar_testing ALIAS seastar_testing)
 
   target_compile_definitions (seastar_testing
-    PUBLIC BOOST_TEST_DYN_LINK)
+    PUBLIC BOOST_TEST_DYN_LINK
+    PRIVATE ${Seastar_PRIVATE_COMPILE_DEFINITIONS})
+
+  target_compile_options (seastar_testing
+    PRIVATE ${Seastar_PRIVATE_CXX_FLAGS})
 
   target_link_libraries (seastar_testing
     PUBLIC
-      Boost::unit_test_framework
       seastar)
 endif ()
 
@@ -795,11 +872,25 @@ if (Seastar_INSTALL)
   # Necessary here for pkg-config.
   include (GNUInstallDirs)
 
-  if (NOT ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug"))
-    set (Sanitizers_PKGCONFIG_COMPILER_OPTIONS "")
-  else ()
-    set (Sanitizers_PKGCONFIG_COMPILER_OPTIONS ${Sanitizers_COMPILER_OPTIONS})
-  endif ()
+  # Set paths in pkg-config files for installation.
+  set (Seastar_PKG_CONFIG_PREFIX ${CMAKE_INSTALL_PREFIX})
+  set (Seastar_PKG_CONFIG_LIBDIR ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+  set (Seastar_PKG_CONFIG_SEASTAR_INCLUDE_FLAGS "-I${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}")
+
+  configure_file (
+    ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-install.pc.in
+    @ONLY)
+
+  configure_file (
+    ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar-testing.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in
+    @ONLY)
+
+  # Set paths in pkg-config files for direct use in the build directory.
+  set (Seastar_PKG_CONFIG_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
+  set (Seastar_PKG_CONFIG_LIBDIR ${CMAKE_CURRENT_BINARY_DIR})
+  set (Seastar_PKG_CONFIG_SEASTAR_INCLUDE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/include -I${CMAKE_CURRENT_BINARY_DIR}/gen/include")
 
   configure_file (
     ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar.pc.in
@@ -811,13 +902,21 @@ if (Seastar_INSTALL)
     ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in
     @ONLY)
 
-  file (GENERATE
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar.pc
-    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar.pc.in)
+#  file (GENERATE
+#    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar.pc
+#    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar.pc.in)
 
-  file (GENERATE
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing.pc
-    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in)
+#  file (GENERATE
+#    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing.pc
+#    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in)
+
+#  file (GENERATE
+#    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-install.pc
+#    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-install.pc.in)
+
+#  file (GENERATE
+#    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
+#    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in)
 
   include (CMakePackageConfigHelpers)
   set (install_cmakedir ${CMAKE_INSTALL_LIBDIR}/cmake/Seastar)
@@ -872,6 +971,7 @@ if (Seastar_INSTALL)
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindLinuxMembarrier.cmake
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindProtobuf.cmake
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindSanitizers.cmake
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindStdAtomic.cmake
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindStdFilesystem.cmake
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Findc-ares.cmake
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Findcryptopp.cmake
@@ -890,10 +990,14 @@ if (Seastar_INSTALL)
     DESTINATION ${install_cmakedir})
 
   install (
-    FILES
-      ${CMAKE_CURRENT_BINARY_DIR}/seastar.pc
-      ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing.pc
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/seastar-install.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+    RENAME seastar.pc)
+
+  install (
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+    RENAME seastar-testing.pc)
 
   #
   # Export targets from the build tree for the user package registry.

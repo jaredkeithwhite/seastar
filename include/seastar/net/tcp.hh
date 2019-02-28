@@ -24,7 +24,6 @@
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/core/queue.hh>
 #include <seastar/core/semaphore.hh>
-#include <seastar/core/print.hh>
 #include <seastar/core/byteorder.hh>
 #include <seastar/core/metrics.hh>
 #include <seastar/net/net.hh>
@@ -51,7 +50,7 @@ using namespace std::chrono_literals;
 
 namespace net {
 
-class tcp_hdr;
+struct tcp_hdr;
 
 inline auto tcp_error(int err) {
     return std::system_error(err, std::system_category());
@@ -663,6 +662,9 @@ private:
     semaphore _queue_space = {212992};
     metrics::metric_groups _metrics;
 public:
+    const inet_type& inet() const {
+        return _inet;
+    }
     class connection {
         lw_shared_ptr<tcb> _tcb;
     public:
@@ -734,6 +736,13 @@ public:
         bool full() { return _pending + _q.size() >= _q.max_size(); }
         void inc_pending() { _pending++; }
         void dec_pending() { _pending--; }
+
+        const tcp& get_tcp() const {
+            return _tcp;
+        }
+        uint16_t port() const {
+            return _port;
+        }
         friend class tcp;
     };
 public:

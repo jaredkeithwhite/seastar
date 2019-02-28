@@ -26,9 +26,19 @@
 #include <utility>
 #include <seastar/net/toeplitz.hh>
 #include <seastar/core/metrics.hh>
+#include <seastar/core/print.hh>
 #include <seastar/net/inet_address.hh>
 
 namespace seastar {
+
+std::ostream& operator<<(std::ostream &os, ipv4_addr addr) {
+    fmt_print(os, "{:d}.{:d}.{:d}.{:d}",
+            (addr.ip >> 24) & 0xff,
+            (addr.ip >> 16) & 0xff,
+            (addr.ip >> 8) & 0xff,
+            (addr.ip) & 0xff);
+    return os << ":" << addr.port;
+}
 
 using std::move;
 
@@ -49,10 +59,15 @@ ipv4_addr::ipv4_addr(const std::string &addr) {
 ipv4_addr::ipv4_addr(const std::string &addr, uint16_t port_) : ip(boost::asio::ip::address_v4::from_string(addr).to_ulong()), port(port_) {}
 
 ipv4_addr::ipv4_addr(const net::inet_address& a, uint16_t port)
-    : ipv4_addr([&a] {
-  ::in_addr in = a;
-  return net::ntoh(in.s_addr);
-}(), port)
+    : ipv4_addr(::in_addr(a), port)
+{}
+
+ipv4_addr::ipv4_addr(const socket_address &sa)
+    : ipv4_addr(sa.addr(), sa.port())
+{}
+
+ipv4_addr::ipv4_addr(const ::in_addr& in, uint16_t p)
+    : ip(net::ntoh(in.s_addr)), port(p)
 {}
 
 namespace net {

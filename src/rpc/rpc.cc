@@ -1,9 +1,23 @@
 #include <seastar/rpc/rpc.hh>
+#include <seastar/core/print.hh>
 #include <boost/range/adaptor/map.hpp>
 
 namespace seastar {
 
 namespace rpc {
+
+    void logger::operator()(const client_info& info, id_type msg_id, const sstring& str) const {
+        log(format("client {} msg_id {}:  {}", info.addr, msg_id, str));
+    }
+
+    void logger::operator()(const client_info& info, const sstring& str) const {
+        (*this)(info.addr, str);
+    }
+
+    void logger::operator()(const socket_address& addr, const sstring& str) const {
+        log(format("client {}: {}", addr, str));
+    }
+
   no_wait_type no_wait;
 
   constexpr size_t snd_buf::chunk_size;
@@ -65,9 +79,9 @@ namespace rpc {
           buf = _compressor->compress(4, std::move(buf));
           static_assert(snd_buf::chunk_size >= 4, "send buffer chunk size is too small");
           write_le<uint32_t>(buf.front().get_write(), buf.size - 4);
-          return std::move(buf);
+          return buf;
       }
-      return std::move(buf);
+      return buf;
   }
 
   future<> connection::send_buffer(snd_buf buf) {
@@ -447,7 +461,7 @@ namespace rpc {
       }
 
       return _stream_queue.not_empty().then([this, &bufs] {
-          bool eof = !_stream_queue.consume([this, &bufs] (rcv_buf&& b) {
+          bool eof = !_stream_queue.consume([&bufs] (rcv_buf&& b) {
               if (b.size == -1U) { // max fragment length marks an end of a stream
                   return false;
               } else {
@@ -608,7 +622,7 @@ namespace rpc {
       }
   }
 
-  client::client(const logger& l, void* s, client_options ops, socket socket, ipv4_addr addr, ipv4_addr local)
+  client::client(const logger& l, void* s, client_options ops, socket socket, const socket_address& addr, const socket_address& local)
   : rpc::connection(l, s), _socket(std::move(socket)), _server_addr(addr), _options(ops) {
       _socket.connect(addr, local).then([this, ops = std::move(ops)] (connected_socket fd) {
           fd.set_nodelay(ops.tcp_nodelay);
@@ -698,15 +712,15 @@ namespace rpc {
       });
   }
 
-  client::client(const logger& l, void* s, ipv4_addr addr, ipv4_addr local)
+  client::client(const logger& l, void* s, const socket_address& addr, const socket_address& local)
   : client(l, s, client_options{}, engine().net().socket(), addr, local)
   {}
 
-  client::client(const logger& l, void* s, client_options options, ipv4_addr addr, ipv4_addr local)
+  client::client(const logger& l, void* s, client_options options, const socket_address& addr, const socket_address& local)
   : client(l, s, options, engine().net().socket(), addr, local)
   {}
 
-  client::client(const logger& l, void* s, socket socket, ipv4_addr addr, ipv4_addr local)
+  client::client(const logger& l, void* s, socket socket, const socket_address& addr, const socket_address& local)
   : client(l, s, client_options{}, std::move(socket), addr, local)
   {}
 
@@ -931,11 +945,11 @@ namespace rpc {
 
   thread_local std::unordered_map<streaming_domain_type, server*> server::_servers;
 
-  server::server(protocol_base* proto, ipv4_addr addr, resource_limits limits)
+  server::server(protocol_base* proto, const socket_address& addr, resource_limits limits)
       : server(proto, engine().listen(addr, listen_options{true}), limits, server_options{})
   {}
 
-  server::server(protocol_base* proto, server_options opts, ipv4_addr addr, resource_limits limits)
+  server::server(protocol_base* proto, server_options opts, const socket_address& addr, resource_limits limits)
       : server(proto, engine().listen(addr, listen_options{true, opts.load_balancing_algorithm}), limits, opts)
   {}
 
@@ -956,12 +970,12 @@ namespace rpc {
       keep_doing([this] () mutable {
           return _ss.accept().then([this] (connected_socket fd, socket_address addr) mutable {
               fd.set_nodelay(_options.tcp_nodelay);
-              connection_id id = invalid_connection_id;
-              if (_options.streaming_domain) {
-                  id = {_next_client_id++ << 16 | uint16_t(engine().cpu_id())};
-              }
+              connection_id id = _options.streaming_domain ?
+                      connection_id::make_id(_next_client_id++, uint16_t(engine().cpu_id())) :
+                      connection_id::make_invalid_id(_next_client_id++);
               auto conn = _proto->make_server_connection(*this, std::move(fd), std::move(addr), id);
-              _conns.emplace(id, conn);
+              auto r = _conns.emplace(id, conn);
+              assert(r.second);
               conn->process();
           });
       }).then_wrapped([this] (future<>&& f){
