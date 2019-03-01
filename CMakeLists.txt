@@ -33,6 +33,14 @@ project (Seastar
   VERSION 1.0
   LANGUAGES CXX)
 
+
+set(CMAKE_C_FLAGS "-mssse3")
+set(CMAKE_C_FLAGS_DEBUG "-mssse3")
+set(CMAKE_C_FLAGS_RELEASE "-mssse3")
+set(CMAKE_CXX_FLAGS "-mssse3")
+set(CMAKE_CXX_FLAGS_DEBUG "-mssse3")
+set(CMAKE_CXX_FLAGS_RELEASE "-mssse3")
+
 option (Seastar_ALLOC_FAILURE_INJECTION
   "Enable failure injection into the Seastar allocator."
   OFF)
