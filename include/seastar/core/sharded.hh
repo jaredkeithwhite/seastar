@@ -564,20 +564,6 @@ sharded<Service>::invoke_single(unsigned t, std::function<future<> (Service&)> f
 
 
 template <typename Service>
-future<>
-sharded<Service>::invoke_on_all(std::function<future<> (Service&)> func) {
-    return internal::sharded_parallel_for_each(_instances.size(), [this, func = std::move(func)] (unsigned c) {
-        return smp::submit_to(c, [this, func] {
-            auto inst = _instances[engine().cpu_id()].service;
-            if (!inst) {
-                return make_ready_future<>();
-            }
-            return func(*inst);
-        });
-    });
-}
-
-template <typename Service>
 template <typename... Args>
 inline
 future<>
