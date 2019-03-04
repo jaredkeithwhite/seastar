@@ -180,6 +180,11 @@ public:
     // the message.
     future<> invoke_on_all(std::function<future<> (Service&)>);
 
+    // Invoke a type-erased function on ONE instance of @Service.
+    // The return value becomes ready when all instances have processed
+    // the message.
+    future<> invoke_single(unsigned t, std::function<future<> (Service&)>);
+
     // Invoke a method on all instances of @Service.
     // The return value becomes ready when all instances have processed
     // the message.
@@ -530,6 +535,33 @@ sharded<Service>::stop() {
         _instances = std::vector<sharded<Service>::entry>();
     });
 }
+
+template <typename Service>
+future<>
+sharded<Service>::invoke_on_all(std::function<future<> (Service&)> func) {
+    return internal::sharded_parallel_for_each(_instances.size(), [this, func = std::move(func)] (unsigned c) {
+        return smp::submit_to(c, [this, func] {
+            auto inst = _instances[engine().cpu_id()].service;
+            if (!inst) {
+                return make_ready_future<>();
+            }
+            return func(*inst);
+        });
+    });
+}
+
+template <typename Service>
+future<>
+sharded<Service>::invoke_single(unsigned t, std::function<future<> (Service&)> func) {
+    return smp::submit_to(t, [this, func] {
+        auto inst = _instances[engine().cpu_id()].service;
+        if (!inst) {
+            return make_ready_future<>();
+        }
+        return func(*inst);
+    });
+}
+
 
 template <typename Service>
 future<>

@@ -50,6 +50,7 @@
 #include <cinttypes>
 #include <rte_config.h>
 #include <rte_common.h>
+#include <rte_memcpy.h>
 #include <rte_eal.h>
 #include <rte_pci.h>
 #include <rte_ethdev.h>
@@ -1764,6 +1765,7 @@ void dpdk_device::init_port_fini()
     printf("Created DPDK device\n");
 }
 
+
 template <bool HugetlbfsMemBackend>
 void* dpdk_qp<HugetlbfsMemBackend>::alloc_mempool_xmem(
     uint16_t num_bufs, uint16_t buf_sz, std::vector<phys_addr_t>& mappings)
@@ -1778,6 +1780,7 @@ void* dpdk_qp<HugetlbfsMemBackend>::alloc_mempool_xmem(
         rte_mempool_xmem_size(num_bufs,
                               mp_obj_sz.elt_size + mp_obj_sz.header_size +
                                                    mp_obj_sz.trailer_size,
+                              0, // *   LOG2 of the physical pages size. If set to 0, ignore page boundaries.
                               page_bits);
 
     // Aligning to 2M causes the further failure in small allocations.
@@ -2163,7 +2166,7 @@ void dpdk_qp<HugetlbfsMemBackend>::process_packets(
 
         // Set stipped VLAN value if available
         if ((_dev->_dev_info.rx_offload_capa & DEV_RX_OFFLOAD_VLAN_STRIP) &&
-            (m->ol_flags & PKT_RX_VLAN_PKT)) {
+            (m->ol_flags & PKT_RX_VLAN_STRIPPED)) {
 
             oi.vlan_tci = m->vlan_tci;
         }

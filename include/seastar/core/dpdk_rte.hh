@@ -22,7 +22,10 @@
 #include <bitset>
 #include <rte_config.h>
 #include <rte_ethdev.h>
+#include <rte_memcpy.h>
 #include <rte_version.h>
+#include <rte_atomic.h>
+
 #include <boost/program_options.hpp>
 
 /*********************** Compat section ***************************************/
