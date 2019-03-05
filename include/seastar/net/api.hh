@@ -244,6 +244,8 @@ public:
         // to a specific shard in a server given it knows how many shards server has by choosing
         // src port number accordingly.
         port,
+        // use the same cpu as the listener at all times
+        same_as_listener,
         default_ = connection_distribution
     };
     /// Constructs a \c server_socket not corresponding to a connection

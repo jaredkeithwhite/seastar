@@ -205,13 +205,23 @@ public:
     }
 };
 
+conntrack::handle choose_conntrack_handler(conntrack& _conntrack, server_socket::load_balancing_algorithm lba, socket_address sa) {
+    switch (lba) {
+        case server_socket::load_balancing_algorithm::port:
+            return _conntrack.get_handle(ntoh(sa.as_posix_sockaddr_in().sin_port) % smp::count);
+        case server_socket::load_balancing_algorithm::same_as_listener:
+            return _conntrack.get_handle(engine().cpu_id());
+        default:
+            return _conntrack.get_handle();
+    }
+}
+
 template <transport Transport>
 future<connected_socket, socket_address>
 posix_server_socket_impl<Transport>::accept() {
     return _lfd.accept().then([this] (pollable_fd fd, socket_address sa) {
-        auto cth = _lba == server_socket::load_balancing_algorithm::connection_distribution ?
-                _conntrack.get_handle() : _conntrack.get_handle(ntoh(sa.as_posix_sockaddr_in().sin_port) % smp::count);
-        auto cpu = cth.cpu();
+        auto cth = choose_conntrack_handler(_conntrack, _lba, sa);
+        shard_id cpu = cth.cpu();
         if (cpu == engine().cpu_id()) {
             std::unique_ptr<connected_socket_impl> csi(
                     new posix_connected_socket_impl<Transport>(make_lw_shared(std::move(fd)), std::move(cth)));

@@ -106,7 +106,7 @@ function (seastar_add_test name)
       set (args "")
 
       list (APPEND libraries
-        Boost::unit_test_framework
+        boost::boost
         seastar_private)
 
       if (NOT (Seastar_JENKINS STREQUAL ""))
